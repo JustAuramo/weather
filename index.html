@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>SkyCast — Sääennuste</title>
+
+    <meta
+        name="description"
+        content="Moderni reaaliaikainen sääennuste"
+    >
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    },
+                    colors: {
+                        dark: {
+                            950: '#07090d',
+                            900: '#0b0e13',
+                            850: '#0f131a',
+                            800: '#141922',
+                            750: '#181e28',
+                            700: '#202733'
+                        },
+                        sky: {
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            background: #07090d;
+            color: #f8fafc;
+            font-family: Inter, system-ui, sans-serif;
+        }
+
+        ::selection {
+            background: rgba(56, 189, 248, 0.25);
+        }
+
+        .glass {
+            background: rgba(15, 19, 26, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(18px);
+        }
+
+        .glass:hover {
+            border-color: rgba(56, 189, 248, 0.14);
+        }
+
+        .weather-card {
+            background:
+                radial-gradient(
+                    circle at 85% 15%,
+                    rgba(14, 165, 233, 0.13),
+                    transparent 32%
+                ),
+                #0f131a;
+        }
+
+        .hero-gradient {
+            background:
+                radial-gradient(
+                    circle at 50% -20%,
+                    rgba(14, 165, 233, 0.16),
+                    transparent 45%
+                );
+        }
+
+        .forecast-scroll {
+            scrollbar-width: thin;
+            scrollbar-color: #293241 transparent;
+        }
+
+        .forecast-scroll::-webkit-scrollbar {
+            height: 5px;
+        }
+
+        .forecast-scroll::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .forecast-scroll::-webkit-scrollbar-thumb {
+            background: #293241;
+            border-radius: 999px;
+        }
+
+        .hour-card {
+            min-width: 92px;
+        }
+
+        .day-card {
+            transition: 0.2s ease;
+        }
+
+        .day-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(56, 189, 248, 0.18);
+        }
+
+        .search-results {
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            animation: pulseLoading 1.4s infinite;
+        }
+
+        @keyframes pulseLoading {
+            0%, 100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.45s ease both;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        canvas {
+            max-width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- =========================================================
+         HEADER
+    ========================================================== -->
+
+    <header class="sticky top-0 z-50 border-b border-white/5 bg-[#07090d]/85 backdrop-blur-xl">
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+            <div class="h-16 flex items-center justify-between gap-4">
+
+                <!-- LOGO -->
+
+                <div class="flex items-center gap-3 shrink-0">
+
+                    <div class="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-400/10 flex items-center justify-center">
+                        <i data-lucide="cloud-sun" class="w-5 h-5 text-sky-400"></i>
+                    </div>
+
+                    <div>
+                        <div class="font-bold tracking-tight">
+                            Sky<span class="text-sky-400">Cast</span>
+                        </div>
+
+                        <div class="text-[10px] uppercase tracking-widest text-slate-500">
+                            Sääennuste
+                        </div>
+                    </div>
+
+                </div>
+
+
+                <!-- SEARCH -->
+
+                <div class="relative flex-1 max-w-xl hidden sm:block">
+
+                    <div class="relative">
+
+                        <i
+                            data-lucide="search"
+                            class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
+                        ></i>
+
+                        <input
+                            id="desktopSearch"
+                            type="text"
+                            autocomplete="off"
+                            placeholder="Hae paikkakuntaa..."
+                            class="w-full h-11 pl-11 pr-12 rounded-xl bg-dark-850 border border-white/5 outline-none text-sm placeholder:text-slate-600 focus:border-sky-400/30 transition"
+                        >
+
+                        <button
+                            onclick="useMyLocation()"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg hover:bg-white/5 text-slate-400 hover:text-sky-400 transition"
+                            title="Käytä sijaintiani"
+                        >
+                            <i data-lucide="crosshair" class="w-4 h-4 mx-auto"></i>
+                        </button>
+
+                    </div>
+
+                    <div
+                        id="desktopResults"
+                        class="hidden absolute left-0 right-0 mt-2 glass rounded-xl overflow-hidden search-results shadow-2xl"
+                    ></div>
+
+                </div>
+
+
+                <!-- RIGHT -->
+
+                <div class="flex items-center gap-2">
+
+                    <button
+                        onclick="useMyLocation()"
+                        class="hidden sm:flex items-center gap-2 h-10 px-3 rounded-xl bg-white/[0.03] border border-white/5 hover:border-sky-400/20 hover:bg-sky-400/5 transition text-sm text-slate-300"
+                    >
+                        <i data-lucide="navigation" class="w-4 h-4 text-sky-400"></i>
+                        Sijaintini
+                    </button>
+
+                    <button
+                        onclick="refreshWeather()"
+                        class="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/5 hover:border-sky-400/20 transition flex items-center justify-center"
+                        title="Päivitä"
+                    >
+                        <i id="refreshIcon" data-lucide="refresh-cw" class="w-4 h-4 text-slate-400"></i>
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- =========================================================
+         MOBILE SEARCH
+    ========================================================== -->
+
+    <div class="sm:hidden px-4 pt-4">
+
+        <div class="relative">
+
+            <i
+                data-lucide="search"
+                class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"
+            ></i>
+
+            <input
+                id="mobileSearch"
+                type="text"
+                autocomplete="off"
+                placeholder="Hae paikkakuntaa..."
+                class="w-full h-12 pl-11 pr-4 rounded-xl bg-dark-850 border border-white/5 outline-none text-sm placeholder:text-slate-600 focus:border-sky-400/30"
+            >
+
+        </div>
+
+        <div
+            id="mobileResults"
+            class="hidden mt-2 glass rounded-xl overflow-hidden"
+        ></div>
+
+    </div>
+
+
+    <!-- =========================================================
+         MAIN
+    ========================================================== -->
+
+    <main class="hero-gradient min-h-screen">
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+
+
+            <!-- LOCATION -->
+
+            <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+
+                <div>
+
+                    <div class="flex items-center gap-2 text-slate-500 text-sm mb-2">
+
+                        <i data-lucide="map-pin" class="w-4 h-4"></i>
+
+                        <span id="locationCountry">
+                            Ladataan sijaintia...
+                        </span>
+
+                    </div>
+
+                    <h1
+                        id="locationName"
+                        class="text-3xl sm:text-4xl font-bold tracking-tight"
+                    >
+                        —
+                    </h1>
+
+                </div>
+
+                <div class="text-left sm:text-right">
+
+                    <div
+                        id="lastUpdated"
+                        class="text-xs text-slate-500"
+                    >
+                        Päivitetään...
+                    </div>
+
+                    <div class="text-xs text-slate-600 mt-1">
+                        Data: Open-Meteo
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =====================================================
+                 CURRENT WEATHER
+            ====================================================== -->
+
+            <section class="weather-card glass rounded-3xl p-6 sm:p-8 mb-6 overflow-hidden relative">
+
+                <div class="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-sky-400/5 blur-3xl"></div>
+
+                <div class="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 items-center">
+
+                    <!-- MAIN -->
+
+                    <div>
+
+                        <div class="flex items-center gap-4">
+
+                            <div
+                                id="currentIcon"
+                                class="text-6xl sm:text-7xl"
+                            >
+                                🌤️
+                            </div>
+
+                            <div>
+
+                                <div
+                                    id="currentTemp"
+                                    class="text-6xl sm:text-7xl font-bold tracking-tighter"
+                                >
+                                    —
+                                </div>
+
+                                <div
+                                    id="currentDescription"
+                                    class="text-slate-400 mt-1"
+                                >
+                                    Ladataan säätä...
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        <div class="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm">
+
+                            <div class="flex items-center gap-2 text-slate-400">
+                                <i data-lucide="thermometer" class="w-4 h-4 text-sky-400"></i>
+                                Tuntuu <span id="feelsLike" class="text-slate-200">—</span>
+                            </div>
+
+                            <div class="flex items-center gap-2 text-slate-400">
+                                <i data-lucide="wind" class="w-4 h-4 text-sky-400"></i>
+                                Tuuli <span id="windMain" class="text-slate-200">—</span>
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- DETAILS -->
+
+                    <div class="grid grid-cols-2 gap-3">
+
+                        <div class="bg-white/[0.025] border border-white/5 rounded-2xl p-4">
+                            <div class="flex items-center gap-2 text-slate-500 text-xs mb-2">
+                                <i data-lucide="droplets" class="w-4 h-4"></i>
+                                Kosteus
+                            </div>
+                            <div id="humidity" class="text-lg font-semibold">—</div>
+                        </div>
+
+                        <div class="bg-white/[0.025] border border-white/5 rounded-2xl p-4">
+                            <div class="flex items-center gap-2 text-slate-500 text-xs mb-2">
+                                <i data-lucide="cloud-rain" class="w-4 h-4"></i>
+                                Sade
+                            </div>
+                            <div id="precipitation" class="text-lg font-semibold">—</div>
+                        </div>
+
+                        <div class="bg-white/[0.025] border border-white/5 rounded-2xl p-4">
+                            <div class="flex items-center gap-2 text-slate-500 text-xs mb-2">
+                                <i data-lucide="gauge" class="w-4 h-4"></i>
+                                Paine
+                            </div>
+                            <div id="pressure" class="text-lg font-semibold">—</div>
+                        </div>
+
+                        <div class="bg-white/[0.025] border border-white/5 rounded-2xl p-4">
+                            <div class="flex items-center gap-2 text-slate-500 text-xs mb-2">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                                Näkyvyys
+                            </div>
+                            <div id="visibility" class="text-lg font-semibold">—</div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =====================================================
+                 SUN
+            ====================================================== -->
+
+            <section class="grid grid-cols-2 gap-3 mb-6">
+
+                <div class="glass rounded-2xl p-4">
+
+                    <div class="flex items-center gap-3">
+
+                        <div class="w-10 h-10 rounded-xl bg-orange-400/10 flex items-center justify-center">
+                            <i data-lucide="sunrise" class="w-5 h-5 text-orange-300"></i>
+                        </div>
+
+                        <div>
+                            <div class="text-xs text-slate-500">
+                                Auringonnousu
+                            </div>
+
+                            <div id="sunrise" class="font-semibold">
+                                —
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="glass rounded-2xl p-4">
+
+                    <div class="flex items-center gap-3">
+
+                        <div class="w-10 h-10 rounded-xl bg-indigo-400/10 flex items-center justify-center">
+                            <i data-lucide="sunset" class="w-5 h-5 text-indigo-300"></i>
+                        </div>
+
+                        <div>
+                            <div class="text-xs text-slate-500">
+                                Auringonlasku
+                            </div>
+
+                            <div id="sunset" class="font-semibold">
+                                —
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- =====================================================
+                 HOURLY
+            ====================================================== -->
+
+            <section class="glass rounded-3xl p-5 sm:p-6 mb-6">
+
+                <div class="flex items-center justify-between mb-5">
+
+                    <div>
+
+                        <h2 class="font-semibold text-lg">
+                            Tuntiennuste
+                        </h2>
+
+                        <p class="text-xs text-slate-500 mt-1">
+                            Seuraavat 24 tuntia
+                        </p>
+
+                    </div>
+
+                    <i data-lucide="clock-3" class="w-5 h-5 text-slate-600"></i>
+
+                </div>
+
+
+                <div
+                    id="hourlyForecast"
+                    class="forecast-scroll flex gap-2 overflow-x-auto pb-2"
+                ></div>
+
+            </section>
+
+
+            <!-- =====================================================
+                 CHART
+            ====================================================== -->
+
+            <section class="glass rounded-3xl p-5 sm:p-6 mb-6">
+
+                <div class="flex items-center justify-between mb-6">
+
+                    <div>
+
+                        <h2 class="font-semibold text-lg">
+                            Lämpötila
+                        </h2>
+
+                        <p class="text-xs text-slate-500 mt-1">
+                            Seuraavat 24 tuntia
+                        </p>
+
+                    </div>
+
+                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                        <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+                        °C
+                    </div>
+
+                </div>
+
+                <div class="h-64">
+                    <canvas id="temperatureChart"></canvas>
+                </div>
+
+            </section>
+
+
+            <!-- =====================================================
+                 7 DAY
+            ====================================================== -->
+
+            <section class="mb-6">
+
+                <div class="flex items-center justify-between mb-5">
+
+                    <div>
+
+                        <h2 class="font-semibold text-lg">
+                            7 päivän ennuste
+                        </h2>
+
+                        <p class="text-xs text-slate-500 mt-1">
+                            Päiväkohtainen sääennuste
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="dailyForecast"
+                    class="grid gap-3"
+                ></div>
+
+            </section>
+
+
+            <!-- =====================================================
+                 INFO
+            ====================================================== -->
+
+            <section class="grid sm:grid-cols-3 gap-3 mb-8">
+
+                <div class="glass rounded-2xl p-5">
+
+                    <div class="flex items-center gap-3 mb-3">
+
+                        <div class="w-10 h-10 rounded-xl bg-sky-400/10 flex items-center justify-center">
+                            <i data-lucide="wind" class="w-5 h-5 text-sky-400"></i>
+                        </div>
+
+                        <div class="font-medium">
+                            Tuuli
+                        </div>
+
+                    </div>
+
+                    <div
+                        id="windDetail"
+                        class="text-sm text-slate-400"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+
+                <div class="glass rounded-2xl p-5">
+
+                    <div class="flex items-center gap-3 mb-3">
+
+                        <div class="w-10 h-10 rounded-xl bg-sky-400/10 flex items-center justify-center">
+                            <i data-lucide="cloud" class="w-5 h-5 text-sky-400"></i>
+                        </div>
+
+                        <div class="font-medium">
+                            Pilvisyys
+                        </div>
+
+                    </div>
+
+                    <div
+                        id="cloudCover"
+                        class="text-sm text-slate-400"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+
+                <div class="glass rounded-2xl p-5">
+
+                    <div class="flex items-center gap-3 mb-3">
+
+                        <div class="w-10 h-10 rounded-xl bg-sky-400/10 flex items-center justify-center">
+                            <i data-lucide="umbrella" class="w-5 h-5 text-sky-400"></i>
+                        </div>
+
+                        <div class="font-medium">
+                            Sateen mahdollisuus
+                        </div>
+
+                    </div>
+
+                    <div
+                        id="rainChance"
+                        class="text-sm text-slate-400"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- ERROR -->
+
+            <div
+                id="errorBox"
+                class="hidden glass rounded-2xl p-5 border-red-500/20 bg-red-500/5"
+            >
+
+                <div class="flex gap-3">
+
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 shrink-0"></i>
+
+                    <div>
+
+                        <div class="font-medium text-red-300">
+                            Säätietojen lataaminen epäonnistui
+                        </div>
+
+                        <div
+                            id="errorText"
+                            class="text-sm text-slate-400 mt-1"
+                        >
+                            Tuntematon virhe.
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </main>
+
+
+    <!-- =========================================================
+         FOOTER
+    ========================================================== -->
+
+    <footer class="border-t border-white/5 bg-[#07090d]">
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+
+                <div>
+                    © 2026 SkyCast
+                </div>
+
+                <div class="flex items-center gap-2">
+                    Säädata tarjoaa Open-Meteo
+                </div>
+
+            </div>
+
+        </div>
+
+    </footer>
+
+
+    <!-- =========================================================
+         JAVASCRIPT
+    ========================================================== -->
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+
+        /* =========================================================
+           STATE
+        ========================================================== */
+
+        let currentLocation = {
+            name: "Helsinki",
+            country: "Suomi",
+            latitude: 60.1699,
+            longitude: 24.9384
+        };
+
+        let weatherData = null;
+        let chart = null;
+
+
+        /* =========================================================
+           WEATHER CODES
+        ========================================================== */
+
+        const weatherCodes = {
+
+            0: {
+                icon: "☀️",
+                text: "Selkeää"
+            },
+
+            1: {
+                icon: "🌤️",
+                text: "Enimmäkseen selkeää"
+            },
+
+            2: {
+                icon: "⛅",
+                text: "Puolipilvistä"
+            },
+
+            3: {
+                icon: "☁️",
+                text: "Pilvistä"
+            },
+
+            45: {
+                icon: "🌫️",
+                text: "Sumua"
+            },
+
+            48: {
+                icon: "🌫️",
+                text: "Huurtavaa sumua"
+            },
+
+            51: {
+                icon: "🌦️",
+                text: "Heikkoa tihkusadetta"
+            },
+
+            53: {
+                icon: "🌦️",
+                text: "Tihkusadetta"
+            },
+
+            55: {
+                icon: "🌧️",
+                text: "Voimakasta tihkusadetta"
+            },
+
+            61: {
+                icon: "🌦️",
+                text: "Heikkoa sadetta"
+            },
+
+            63: {
+                icon: "🌧️",
+                text: "Sadetta"
+            },
+
+            65: {
+                icon: "🌧️",
+                text: "Voimakasta sadetta"
+            },
+
+            71: {
+                icon: "🌨️",
+                text: "Heikkoa lumisadetta"
+            },
+
+            73: {
+                icon: "🌨️",
+                text: "Lumisadetta"
+            },
+
+            75: {
+                icon: "❄️",
+                text: "Voimakasta lumisadetta"
+            },
+
+            77: {
+                icon: "🌨️",
+                text: "Lumijyväsiä"
+            },
+
+            80: {
+                icon: "🌦️",
+                text: "Sadekuuroja"
+            },
+
+            81: {
+                icon: "🌧️",
+                text: "Voimakkaita sadekuuroja"
+            },
+
+            82: {
+                icon: "⛈️",
+                text: "Erittäin voimakkaita sadekuuroja"
+            },
+
+            85: {
+                icon: "🌨️",
+                text: "Lumikuuroja"
+            },
+
+            86: {
+                icon: "🌨️",
+                text: "Voimakkaita lumikuuroja"
+            },
+
+            95: {
+                icon: "⛈️",
+                text: "Ukkosta"
+            },
+
+            96: {
+                icon: "⛈️",
+                text: "Ukkosta ja raetta"
+            },
+
+            99: {
+                icon: "⛈️",
+                text: "Voimakasta ukkosta ja raetta"
+            }
+
+        };
+
+
+        /* =========================================================
+           HELPERS
+        ========================================================== */
+
+        function getWeather(code) {
+
+            return weatherCodes[code] || {
+                icon: "🌡️",
+                text: "Tuntematon sää"
+            };
+
+        }
+
+
+        function formatTime(value) {
+
+            const date = new Date(value);
+
+            return date.toLocaleTimeString("fi-FI", {
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+
+        }
+
+
+        function formatDay(value, index) {
+
+            if (index === 0) {
+                return "Tänään";
+            }
+
+            if (index === 1) {
+                return "Huomenna";
+            }
+
+            const date = new Date(value);
+
+            return date.toLocaleDateString("fi-FI", {
+                weekday: "short"
+            });
+
+        }
+
+
+        function degreesToDirection(degrees) {
+
+            const directions = [
+                "P",
+                "NE",
+                "E",
+                "SE",
+                "S",
+                "SW",
+                "W",
+                "NW"
+            ];
+
+            const index = Math.round(degrees / 45) % 8;
+
+            return directions[index];
+
+        }
+
+
+        function formatVisibility(meters) {
+
+            if (!meters) return "—";
+
+            if (meters >= 1000) {
+                return `${(meters / 1000).toFixed(1)} km`;
+            }
+
+            return `${Math.round(meters)} m`;
+
+        }
+
+
+        /* =========================================================
+           WEATHER API
+        ========================================================== */
+
+        async function fetchWeather(latitude, longitude) {
+
+            hideError();
+
+            setLoading(true);
+
+            const url =
+                "https://api.open-meteo.com/v1/forecast" +
+                `?latitude=${latitude}` +
+                `&longitude=${longitude}` +
+                "&current=" +
+                [
+                    "temperature_2m",
+                    "relative_humidity_2m",
+                    "apparent_temperature",
+                    "precipitation",
+                    "weather_code",
+                    "surface_pressure",
+                    "wind_speed_10m",
+                    "wind_direction_10m",
+                    "cloud_cover"
+                ].join(",") +
+                "&hourly=" +
+                [
+                    "temperature_2m",
+                    "apparent_temperature",
+                    "precipitation_probability",
+                    "precipitation",
+                    "weather_code",
+                    "wind_speed_10m",
+                    "wind_direction_10m",
+                    "relative_humidity_2m"
+                ].join(",") +
+                "&daily=" +
+                [
+                    "weather_code",
+                    "temperature_2m_max",
+                    "temperature_2m_min",
+                    "precipitation_sum",
+                    "precipitation_probability_max",
+                    "sunrise",
+                    "sunset",
+                    "wind_speed_10m_max",
+                    "wind_direction_10m_dominant"
+                ].join(",") +
+                "&forecast_days=7" +
+                "&timezone=auto";
+
+            try {
+
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error("Sääpalvelu palautti virheen.");
+                }
+
+                weatherData = await response.json();
+
+                renderWeather();
+
+            } catch (error) {
+
+                console.error(error);
+
+                showError(
+                    "Säätietojen hakeminen epäonnistui. Tarkista internet-yhteys ja yritä uudelleen."
+                );
+
+            } finally {
+
+                setLoading(false);
+
+            }
+
+        }
+
+
+        /* =========================================================
+           RENDER
+        ========================================================== */
+
+        function renderWeather() {
+
+            if (!weatherData) return;
+
+            const current = weatherData.current;
+            const hourly = weatherData.hourly;
+            const daily = weatherData.daily;
+
+            const weather = getWeather(current.weather_code);
+
+
+            /* LOCATION */
+
+            document.getElementById("locationName").textContent =
+                currentLocation.name;
+
+            document.getElementById("locationCountry").textContent =
+                `${currentLocation.country} · ${weatherData.timezone}`;
+
+
+            /* CURRENT */
+
+            document.getElementById("currentIcon").textContent =
+                weather.icon;
+
+            document.getElementById("currentTemp").textContent =
+                `${Math.round(current.temperature_2m)}°`;
+
+            document.getElementById("currentDescription").textContent =
+                weather.text;
+
+            document.getElementById("feelsLike").textContent =
+                `${Math.round(current.apparent_temperature)}°`;
+
+            document.getElementById("windMain").textContent =
+                `${Math.round(current.wind_speed_10m)} km/h`;
+
+
+            /* DETAILS */
+
+            document.getElementById("humidity").textContent =
+                `${current.relative_humidity_2m}%`;
+
+            document.getElementById("precipitation").textContent =
+                `${current.precipitation.toFixed(1)} mm`;
+
+            document.getElementById("pressure").textContent =
+                `${Math.round(current.surface_pressure)} hPa`;
+
+            document.getElementById("windDetail").textContent =
+                `${Math.round(current.wind_speed_10m)} km/h · ${degreesToDirection(current.wind_direction_10m)}`;
+
+            document.getElementById("cloudCover").textContent =
+                `${current.cloud_cover}%`;
+
+            document.getElementById("visibility").textContent =
+                "—";
+
+
+            /* SUN */
+
+            document.getElementById("sunrise").textContent =
+                formatTime(daily.sunrise[0]);
+
+            document.getElementById("sunset").textContent =
+                formatTime(daily.sunset[0]);
+
+
+            /* RAIN */
+
+            const currentHour = findCurrentHour();
+
+            const rainProbability =
+                hourly.precipitation_probability[currentHour] ?? 0;
+
+            document.getElementById("rainChance").textContent =
+                `${rainProbability}%`;
+
+
+            /* UPDATED */
+
+            document.getElementById("lastUpdated").textContent =
+                `Päivitetty ${formatTime(current.time)}`;
+
+
+            renderHourly();
+
+            renderDaily();
+
+            renderChart();
+
+            lucide.createIcons();
+
+        }
+
+
+        /* =========================================================
+           FIND CURRENT HOUR
+        ========================================================== */
+
+        function findCurrentHour() {
+
+            if (!weatherData) return 0;
+
+            const now = new Date();
+
+            let closest = 0;
+            let difference = Infinity;
+
+            weatherData.hourly.time.forEach((time, index) => {
+
+                const date = new Date(time);
+
+                const diff = Math.abs(date - now);
+
+                if (diff < difference) {
+
+                    difference = diff;
+                    closest = index;
+
+                }
+
+            });
+
+            return closest;
+
+        }
+
+
+        /* =========================================================
+           HOURLY
+        ========================================================== */
+
+        function renderHourly() {
+
+            const container =
+                document.getElementById("hourlyForecast");
+
+            container.innerHTML = "";
+
+            const hourly = weatherData.hourly;
+
+            const start = findCurrentHour();
+
+            for (let i = start; i < start + 24 && i < hourly.time.length; i++) {
+
+                const weather =
+                    getWeather(hourly.weather_code[i]);
+
+                const isNow = i === start;
+
+                const card = document.createElement("div");
+
+                card.className =
+                    `hour-card rounded-2xl border p-4 text-center shrink-0 fade-in ${
+                        isNow
+                            ? "bg-sky-400/10 border-sky-400/20"
+                            : "bg-white/[0.025] border-white/5"
+                    }`;
+
+                card.innerHTML = `
+
+                    <div class="text-xs ${
+                        isNow
+                            ? "text-sky-400"
+                            : "text-slate-500"
+                    }">
+                        ${isNow ? "Nyt" : formatTime(hourly.time[i])}
+                    </div>
+
+                    <div class="text-2xl my-3">
+                        ${weather.icon}
+                    </div>
+
+                    <div class="font-semibold">
+                        ${Math.round(hourly.temperature_2m[i])}°
+                    </div>
+
+                    <div class="text-[11px] text-slate-500 mt-2">
+                        💧 ${hourly.precipitation_probability[i] ?? 0}%
+                    </div>
+
+                    <div class="text-[11px] text-slate-600 mt-1">
+                        ${Math.round(hourly.wind_speed_10m[i])} km/h
+                    </div>
+
+                `;
+
+                container.appendChild(card);
+
+            }
+
+        }
+
+
+        /* =========================================================
+           DAILY
+        ========================================================== */
+
+        function renderDaily() {
+
+            const container =
+                document.getElementById("dailyForecast");
+
+            container.innerHTML = "";
+
+            const daily = weatherData.daily;
+
+            for (let i = 0; i < daily.time.length; i++) {
+
+                const weather =
+                    getWeather(daily.weather_code[i]);
+
+                const card =
+                    document.createElement("div");
+
+                card.className =
+                    "day-card glass rounded-2xl p-4";
+
+                card.innerHTML = `
+
+                    <div class="grid grid-cols-[1fr_auto_auto] items-center gap-4">
+
+                        <div class="flex items-center gap-4">
+
+                            <div class="w-12 h-12 rounded-xl bg-white/[0.03] flex items-center justify-center text-2xl">
+                                ${weather.icon}
+                            </div>
+
+                            <div>
+
+                                <div class="font-medium">
+                                    ${formatDay(daily.time[i], i)}
+                                </div>
+
+                                <div class="text-xs text-slate-500 mt-1">
+                                    ${weather.text}
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                        <div class="hidden sm:block text-xs text-slate-500 text-right">
+
+                            <div>
+                                💧 ${daily.precipitation_probability_max[i] ?? 0}%
+                            </div>
+
+                            <div class="mt-1">
+                                💨 ${Math.round(daily.wind_speed_10m_max[i])} km/h
+                            </div>
+
+                        </div>
+
+                        <div class="text-right whitespace-nowrap">
+
+                            <span class="font-semibold">
+                                ${Math.round(daily.temperature_2m_max[i])}°
+                            </span>
+
+                            <span class="text-slate-500 ml-2">
+                                ${Math.round(daily.temperature_2m_min[i])}°
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                `;
+
+                container.appendChild(card);
+
+            }
+
+        }
+
+
+        /* =========================================================
+           CHART
+        ========================================================== */
+
+        function renderChart() {
+
+            const canvas =
+                document.getElementById("temperatureChart");
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            const hourly = weatherData.hourly;
+
+            const start = findCurrentHour();
+
+            const labels = [];
+            const temperatures = [];
+
+            for (
+                let i = start;
+                i < start + 24 &&
+                i < hourly.time.length;
+                i++
+            ) {
+
+                labels.push(
+                    formatTime(hourly.time[i])
+                );
+
+                temperatures.push(
+                    hourly.temperature_2m[i]
+                );
+
+            }
+
+            chart = new Chart(canvas, {
+
+                type: "line",
+
+                data: {
+
+                    labels,
+
+                    datasets: [{
+
+                        data: temperatures,
+
+                        borderColor: "#38bdf8",
+
+                        backgroundColor: "rgba(56, 189, 248, 0.08)",
+
+                        fill: true,
+
+                        tension: 0.4,
+
+                        pointRadius: 3,
+
+                        pointHoverRadius: 6,
+
+                        pointBackgroundColor: "#38bdf8",
+
+                        borderWidth: 2
+
+                    }]
+
+                },
+
+                options: {
+
+                    responsive: true,
+
+                    maintainAspectRatio: false,
+
+                    plugins: {
+
+                        legend: {
+                            display: false
+                        },
+
+                        tooltip: {
+
+                            backgroundColor: "#10151d",
+
+                            borderColor: "rgba(255,255,255,.08)",
+
+                            borderWidth: 1,
+
+                            titleColor: "#94a3b8",
+
+                            bodyColor: "#f8fafc",
+
+                            padding: 12,
+
+                            displayColors: false,
+
+                            callbacks: {
+
+                                label: function(context) {
+
+                                    return `${Math.round(context.raw)} °C`;
+
+                                }
+
+                            }
+
+                        }
+
+                    },
+
+                    scales: {
+
+                        x: {
+
+                            grid: {
+                                display: false
+                            },
+
+                            ticks: {
+                                color: "#64748b",
+                                maxTicksLimit: 8
+                            }
+
+                        },
+
+                        y: {
+
+                            grid: {
+                                color: "rgba(255,255,255,.04)"
+                            },
+
+                            ticks: {
+
+                                color: "#64748b",
+
+                                callback: function(value) {
+                                    return `${value}°`;
+                                }
+
+                            }
+
+                        }
+
+                    }
+
+                }
+
+            });
+
+        }
+
+
+        /* =========================================================
+           GEOLOCATION
+        ========================================================== */
+
+        function useMyLocation() {
+
+            if (!navigator.geolocation) {
+
+                showError(
+                    "Selaimesi ei tue sijainnin hakemista."
+                );
+
+                return;
+
+            }
+
+            setLoading(true);
+
+            navigator.geolocation.getCurrentPosition(
+
+                async position => {
+
+                    const lat =
+                        position.coords.latitude;
+
+                    const lon =
+                        position.coords.longitude;
+
+                    try {
+
+                        const location =
+                            await reverseGeocode(lat, lon);
+
+                        currentLocation = location;
+
+                        await fetchWeather(lat, lon);
+
+                    } catch (error) {
+
+                        showError(
+                            "Sijaintiasi ei voitu tunnistaa."
+                        );
+
+                    }
+
+                },
+
+                error => {
+
+                    setLoading(false);
+
+                    showError(
+                        "Sijainnin käyttö estettiin. Voit hakea paikkakunnan nimellä."
+                    );
+
+                },
+
+                {
+                    enableHighAccuracy: false,
+                    timeout: 10000,
+                    maximumAge: 300000
+                }
+
+            );
+
+        }
+
+
+        /* =========================================================
+           REVERSE GEOCODING
+        ========================================================== */
+
+        async function reverseGeocode(latitude, longitude) {
+
+            const url =
+                `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${latitude}&longitude=${longitude}&count=1&language=fi&format=json`;
+
+            try {
+
+                const response =
+                    await fetch(url);
+
+                const data =
+                    await response.json();
+
+                if (
+                    data.results &&
+                    data.results.length
+                ) {
+
+                    const result =
+                        data.results[0];
+
+                    return {
+
+                        name:
+                            result.name ||
+                            "Nykyinen sijainti",
+
+                        country:
+                            result.country ||
+                            "Suomi",
+
+                        latitude,
+                        longitude
+
+                    };
+
+                }
+
+            } catch (error) {
+
+                console.error(error);
+
+            }
+
+            return {
+
+                name: "Nykyinen sijainti",
+
+                country: "",
+
+                latitude,
+                longitude
+
+            };
+
+        }
+
+
+        /* =========================================================
+           LOCATION SEARCH
+        ========================================================== */
+
+        let searchTimeout = null;
+
+
+        function setupSearch(inputId, resultsId) {
+
+            const input =
+                document.getElementById(inputId);
+
+            const results =
+                document.getElementById(resultsId);
+
+            if (!input) return;
+
+            input.addEventListener(
+                "input",
+                () => {
+
+                    clearTimeout(searchTimeout);
+
+                    const query =
+                        input.value.trim();
+
+                    if (query.length < 2) {
+
+                        results.classList.add("hidden");
+
+                        return;
+
+                    }
+
+                    searchTimeout =
+                        setTimeout(
+                            () => searchLocations(
+                                query,
+                                results
+                            ),
+                            300
+                        );
+
+                }
+            );
+
+            input.addEventListener(
+                "keydown",
+                event => {
+
+                    if (event.key === "Enter") {
+
+                        const query =
+                            input.value.trim();
+
+                        if (query.length >= 2) {
+
+                            searchLocations(
+                                query,
+                                results
+                            );
+
+                        }
+
+                    }
+
+                }
+            );
+
+        }
+
+
+        async function searchLocations(query, resultsContainer) {
+
+            try {
+
+                const url =
+                    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=fi&format=json`;
+
+                const response =
+                    await fetch(url);
+
+                const data =
+                    await response.json();
+
+                resultsContainer.innerHTML = "";
+
+                if (
+                    !data.results ||
+                    data.results.length === 0
+                ) {
+
+                    resultsContainer.innerHTML = `
+
+                        <div class="p-4 text-sm text-slate-500">
+                            Paikkakuntaa ei löytynyt.
+                        </div>
+
+                    `;
+
+                    resultsContainer.classList.remove("hidden");
+
+                    return;
+
+                }
+
+
+                data.results.forEach(location => {
+
+                    const button =
+                        document.createElement("button");
+
+                    button.className =
+                        "w-full text-left px-4 py-3 hover:bg-white/5 transition flex items-center gap-3";
+
+                    button.innerHTML = `
+
+                        <div class="w-9 h-9 rounded-lg bg-sky-400/10 flex items-center justify-center shrink-0">
+
+                            <i data-lucide="map-pin" class="w-4 h-4 text-sky-400"></i>
+
+                        </div>
+
+                        <div>
+
+                            <div class="text-sm font-medium">
+                                ${location.name}
+                            </div>
+
+                            <div class="text-xs text-slate-500 mt-0.5">
+
+                                ${
+                                    [
+                                        location.admin1,
+                                        location.country
+                                    ]
+                                    .filter(Boolean)
+                                    .join(", ")
+                                }
+
+                            </div>
+
+                        </div>
+
+                    `;
+
+                    button.addEventListener(
+                        "click",
+                        () => {
+
+                            selectLocation(location);
+
+                            resultsContainer.classList.add(
+                                "hidden"
+                            );
+
+                        }
+                    );
+
+                    resultsContainer.appendChild(button);
+
+                });
+
+                resultsContainer.classList.remove(
+                    "hidden"
+                );
+
+                lucide.createIcons();
+
+            } catch (error) {
+
+                console.error(error);
+
+            }
+
+        }
+
+
+        function selectLocation(location) {
+
+            currentLocation = {
+
+                name: location.name,
+
+                country:
+                    location.country || "",
+
+                latitude: location.latitude,
+
+                longitude: location.longitude
+
+            };
+
+            document.getElementById(
+                "desktopSearch"
+            ).value = "";
+
+            document.getElementById(
+                "mobileSearch"
+            ).value = "";
+
+            fetchWeather(
+                location.latitude,
+                location.longitude
+            );
+
+        }
+
+
+        /* =========================================================
+           UI
+        ========================================================== */
+
+        function setLoading(state) {
+
+            const icon =
+                document.getElementById("refreshIcon");
+
+            if (!icon) return;
+
+            if (state) {
+
+                icon.classList.add("spin");
+
+            } else {
+
+                icon.classList.remove("spin");
+
+            }
+
+        }
+
+
+        function refreshWeather() {
+
+            fetchWeather(
+                currentLocation.latitude,
+                currentLocation.longitude
+            );
+
+        }
+
+
+        function showError(message) {
+
+            document
+                .getElementById("errorBox")
+                .classList.remove("hidden");
+
+            document
+                .getElementById("errorText")
+                .textContent = message;
+
+        }
+
+
+        function hideError() {
+
+            document
+                .getElementById("errorBox")
+                .classList.add("hidden");
+
+        }
+
+
+        /* =========================================================
+           INIT
+        ========================================================== */
+
+        setupSearch(
+            "desktopSearch",
+            "desktopResults"
+        );
+
+        setupSearch(
+            "mobileSearch",
+            "mobileResults"
+        );
+
+
+        document.addEventListener(
+            "click",
+            event => {
+
+                if (
+                    !event.target.closest(
+                        "#desktopSearch"
+                    ) &&
+                    !event.target.closest(
+                        "#desktopResults"
+                    )
+                ) {
+
+                    document
+                        .getElementById(
+                            "desktopResults"
+                        )
+                        .classList.add("hidden");
+
+                }
+
+                if (
+                    !event.target.closest(
+                        "#mobileSearch"
+                    ) &&
+                    !event.target.closest(
+                        "#mobileResults"
+                    )
+                ) {
+
+                    document
+                        .getElementById(
+                            "mobileResults"
+                        )
+                        .classList.add("hidden");
+
+                }
+
+            }
+        );
+
+
+        /* Lucide */
+
+        lucide.createIcons();
+
+
+        /* Start Helsinki */
+
+        fetchWeather(
+            currentLocation.latitude,
+            currentLocation.longitude
+        );
+
+
+        /* Automatic refresh every 15 minutes */
+
+        setInterval(
+            () => {
+
+                fetchWeather(
+                    currentLocation.latitude,
+                    currentLocation.longitude
+                );
+
+            },
+            15 * 60 * 1000
+        );
+
+    </script>
+
+</body>
+</html>
